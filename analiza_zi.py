@@ -73,8 +73,18 @@ def load_bot():
             except Exception:
                 pass
         if os.getenv(kid) and os.getenv(sec):
-            key, secret = os.getenv(kid), os.getenv(sec)
+            key = os.getenv(kid).strip().strip('"').strip("'")
+            secret = os.getenv(sec).strip().strip('"').strip("'")
             break
+    for name, val in (("APCA_API_KEY_ID (Key ID)", key), ("APCA_API_SECRET_KEY (Secret)", secret)):
+        bad = [(i + 1, ch) for i, ch in enumerate(val or "") if not (ch.isascii() and ch.isprintable())]
+        if bad:
+            pos, ch = bad[0]
+            raise RuntimeError(
+                f"Cheia {name} contine un caracter nepermis pe pozitia {pos}: {ch!r} "
+                f"(cod U+{ord(ch):04X}). Cheile Alpaca au doar litere latine si cifre. "
+                "Probabil tastatura a pus o litera chirilica (ex. Х in loc de X) sau un "
+                "spatiu special. Sterge secretul si lipeste-l din nou, copiat direct din Alpaca.")
     if not key:
         raise RuntimeError("Nu gasesc cheile Alpaca. Pune analiza_zi.py in folderul unui bot "
                            "(ex. botul Trading 212) si deschide o data fereastra lui ca sa "
@@ -91,6 +101,14 @@ def _retry(fn, what):
         try:
             return fn()
         except Exception as exc:
+            txt = str(exc)
+            if "401" in txt or "403" in txt or "Authorization Required" in txt \
+                    or "forbidden" in txt.lower() or "unauthorized" in txt.lower():
+                raise RuntimeError(
+                    "Alpaca a respins cheile (401/403). Verifica APCA_API_KEY_ID si "
+                    "APCA_API_SECRET_KEY: sa fie cheile contului Paper, copiate fara spatii "
+                    "sau ghilimele, Key ID si Secret sa nu fie inversate, si sa nu fi "
+                    "regenerat cheile intre timp (cheile vechi nu mai merg).") from None
             say(f"  {what}: {str(exc)[:100]} (incercarea {attempt + 1}/3)")
             time.sleep(3 * (attempt + 1))
     return None
@@ -721,6 +739,22 @@ def analyze(bot, sym, d):
     return html_path
 
 
+def parse_date(text):
+    """Accepta 2026-10-15, 2026.10.15, 2026/10/15, 15.10.2026, 15-10-2026, 15/10/2026."""
+    import re
+    parts = [p for p in re.split(r"[^0-9]+", text.strip()) if p]
+    if len(parts) == 3:
+        a, b, c = parts
+        try:
+            if len(a) == 4:
+                return date(int(a), int(b), int(c))
+            if len(c) == 4:
+                return date(int(c), int(b), int(a))
+        except ValueError:
+            pass
+    raise SystemExit(f"Data „{text}” nu e valida. Scrie-o ca 2026-10-15 sau 15.10.2026.")
+
+
 def ask_inputs(argv):
     sym = argv[1] if len(argv) > 1 else input("Simbolul actiunii (ex. SDST): ")
     sym = sym.strip().upper()
@@ -729,7 +763,7 @@ def ask_inputs(argv):
     else:
         ds = input("Data (AAAA-LL-ZZ, Enter = azi): ").strip()
     if ds:
-        d = datetime.strptime(ds, "%Y-%m-%d").date()
+        d = parse_date(ds)
     else:
         d = datetime.now(NY).date()
     return sym, d
