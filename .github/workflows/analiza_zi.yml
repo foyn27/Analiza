@@ -1,0 +1,50 @@
+name: Analiza zi (Alpaca)
+
+on:
+  workflow_dispatch:
+    inputs:
+      simbol:
+        description: "Simbolul actiunii (ex. BETR)"
+        required: true
+      data:
+        description: "Data AAAA-LL-ZZ (gol = azi)"
+        required: false
+        default: ""
+
+jobs:
+  analiza:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instaleaza pachetele
+        run: pip install alpaca-py pandas numpy
+      - name: Ruleaza analiza
+        env:
+          APCA_API_KEY_ID: ${{ secrets.APCA_API_KEY_ID }}
+          APCA_API_SECRET_KEY: ${{ secrets.APCA_API_SECRET_KEY }}
+          SIMBOL: ${{ github.event.inputs.simbol }}
+          DATA: ${{ github.event.inputs.data }}
+        run: |
+          python analiza_zi.py "$SIMBOL" "$DATA" | tee jurnal.txt
+          ls ~/alpaca_auto_istoric/analiza_zi/*.html >/dev/null 2>&1 || { echo "Analiza nu a produs raportul (vezi eroarea mai sus)."; exit 1; }
+          {
+            echo "## Analiza ${SIMBOL^^} ${DATA:-azi}"
+            echo ""
+            echo "Raportul (HTML) si minutele (CSV) sunt la **Artifacts**, mai jos pe pagina."
+            echo ""
+            echo '```'
+            tail -n 15 jurnal.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Salveaza raportul
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: analiza-${{ github.event.inputs.simbol }}-${{ github.event.inputs.data || 'azi' }}
+          path: ~/alpaca_auto_istoric/analiza_zi/
+          if-no-files-found: warn
+          retention-days: 14
