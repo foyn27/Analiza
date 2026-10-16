@@ -76,6 +76,17 @@ def load_bot():
             key = os.getenv(kid).strip().strip('"').strip("'")
             secret = os.getenv(sec).strip().strip('"').strip("'")
             break
+    # Litere chirilice care arata EXACT ca cele latine (apar cand cheia trece prin tastatura
+    # telefonului sau prin recunoasterea textului dintr-o poza): le inlocuim cu cele latine.
+    homo = str.maketrans("АВЕКМНОРСТХУаеорсхуіІ", "ABEKMHOPCTXYaeopcxyiI")
+    fixed = []
+    for label, val in (("Key ID", key), ("Secret", secret)):
+        if val and val != val.translate(homo):
+            fixed.append(label)
+    if fixed:
+        key, secret = key.translate(homo), secret.translate(homo)
+        print(f"ATENTIE: am inlocuit litere chirilice cu cele latine in: {', '.join(fixed)}. "
+              "Corecteaza cheia si acolo de unde ai copiat-o.", flush=True)
     for name, val in (("APCA_API_KEY_ID (Key ID)", key), ("APCA_API_SECRET_KEY (Secret)", secret)):
         bad = [(i + 1, ch) for i, ch in enumerate(val or "") if not (ch.isascii() and ch.isprintable())]
         if bad:
